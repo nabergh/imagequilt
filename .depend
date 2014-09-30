@@ -1,0 +1,2 @@
+imagequilt.o: imagequilt.cpp CImg.h patch.h
+patch.o: patch.cpp patch.h CImg.h
