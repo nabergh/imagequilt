@@ -30,16 +30,16 @@ Patch::Patch(int t, int l, int b, int r) {
 }
 
 /*Patch& Patch::operator=(const Patch& p) {
-	img = p.img;
-	top = p.top;
-	left = p.left;
-	bottom = p.bottom;
-	right = p.right;
-	rightDiff = p.rightDiff;
-	botDiff = p.botDiff;
-	rPatch = p.rPatch;
-	bPatch = p.bPatch;
-	return *this;
+    img = p.img;
+    top = p.top;
+    left = p.left;
+    bottom = p.bottom;
+    right = p.right;
+    rightDiff = p.rightDiff;
+    botDiff = p.botDiff;
+    rPatch = p.rPatch;
+    bPatch = p.bPatch;
+    return *this;
 }*/
 
 int Patch::compRight(Patch &currPatch) {
@@ -64,7 +64,7 @@ int Patch::compRight(Patch &currPatch) {
 	return currentDiff;
 }
 
-int Patch::compBottom(Patch &currPatch) {
+int Patch::compBottom(Patch &currPatch, CImg<unsigned char> &image) {
 	int w = currPatch.right - currPatch.left;
 	int h = fmin(currPatch.bottom - currPatch.top, sw);
 	int currentDiff = 0;
@@ -72,7 +72,7 @@ int Patch::compBottom(Patch &currPatch) {
 	for (int i = 0; i < w; ++i) {
 		for (int j = 0; j < h; ++j) {
 			for (int c = 0; c < spectrum; ++c) {
-				int diff = abs((int) source(left + i, bottom - h + j, c) - (int) source(currPatch.left + i, currPatch.top + j, c));
+				int diff = abs((int) image(left + i, bottom - h + j, c) - (int) image(currPatch.left + i, currPatch.top + j, c));
 				currentDiff += diff;
 				diffMat[i][j] = diffMat[i][j] + diff;
 			}
@@ -86,14 +86,14 @@ int Patch::compBottom(Patch &currPatch) {
 	return currentDiff;
 }
 
-void Patch::findRightSeam() {
-	int w = diffMatRight.size();
-	int h = diffMatRight[0].size();
+std::vector< std::vector<bool> > Patch::findSeam(std::vector< vector<int> > &diffMat) {
+	int w = diffMat.size();
+	int h = diffMat[0].size();
 	std::vector< std::vector<int> > weightMat = std::vector< std::vector<int> >(w, std::vector<int>(h, 0));
 
 	//filling each cell in the weight matrix with the cost to get to that cell from any of the three adjacent cells above
 	for (int i = 0; i < w; ++i) {
-		weightMat[i][0] = diffMatRight[i][0];
+		weightMat[i][0] = diffMat[i][0];
 	}
 	for (int j = 1; j < h; ++j) {
 		for (int i = 0; i < w; ++i) {
@@ -107,12 +107,12 @@ void Patch::findRightSeam() {
 			if (i != w - 1) {
 				tr = weightMat[i + 1][j - 1];
 			}
-			weightMat[i][j] = diffMatRight[i][j] + min(min(tl, t), tr);
+			weightMat[i][j] = diffMat[i][j] + min(min(tl, t), tr);
 		}
 	}
 
 	//tracing back and dividing seam matrix in two
-	rightSeam = std::vector< std::vector<bool> >(w, std::vector<bool>(h, 0));
+	std::vector< std::vector<bool> > seam = std::vector< std::vector<bool> >(w, std::vector<bool>(h, 0));
 
 	int min = weightMat[0][h - 1];
 	int minIndex = 0;
@@ -123,18 +123,18 @@ void Patch::findRightSeam() {
 		}
 	}
 	for (int i = 0; i < w; ++i) {
-		rightSeam[i][h - 1] = i <= minIndex;
+		seam[i][h - 1] = i <= minIndex;
 	}
 	for (int j = h - 2; j >= 0; j--) {
 		int l = MAX_INT;
 		int m = MAX_INT;
 		int r = MAX_INT;
 		if (minIndex != 0) {
-			l = diffMatRight[minIndex - 1][j];
+			l = diffMat[minIndex - 1][j];
 		}
-		m = diffMatRight[minIndex][j];
+		m = diffMat[minIndex][j];
 		if (minIndex != w - 1) {
-			r = diffMatRight[minIndex + 1][j];
+			r = diffMat[minIndex + 1][j];
 		}
 
 		if (l < m && l < r) {
@@ -144,9 +144,12 @@ void Patch::findRightSeam() {
 		}
 
 		for (int i = 0; i < w; ++i) {
-			rightSeam[i][j] = i <= minIndex;
+			seam[i][j] = i <= minIndex;
 		}
 	}
+
+	return seam;
+
 	/*  for (int i = 0; i < w; ++i) {
 	        printf("[ ");
 	        for (int j = 0; j < h; ++j) {
@@ -154,6 +157,33 @@ void Patch::findRightSeam() {
 	        }
 	        printf(" ]\n");
 	    }*/
+}
+
+void Patch::findRightSeam() {
+	rightSeam = findSeam(diffMatRight);
+}
+
+void Patch::findBottomSeam() {
+	std::vector< std::vector<int> > diffMat = std::vector< std::vector<int> >(diffMatBot[0].size(), std::vector<int>(diffMatBot.size(), 0));
+	for (size_t i = 0; i < diffMatBot.size(); ++i) {
+		for (size_t j = 0; j < diffMatBot[0].size(); ++j) {
+			diffMat[j][i] = diffMatBot[i][j];
+		}
+	}
+	std::vector< std::vector<bool> > seam = findSeam(diffMat);
+	botSeam = std::vector< std::vector<bool> >(seam[0].size(), std::vector<bool>(seam.size(), 0));
+	for (size_t i = 0; i < seam.size(); ++i) {
+		for (size_t j = 0; j < seam[0].size(); ++j) {
+			botSeam[j][i] = seam[i][j];
+		}
+	}
+	// for (size_t i = 0; i < botSeam.size(); ++i) {
+	//  printf("[ ");
+	//  for (size_t j = 0; j < botSeam[0].size(); ++j) {
+	//      printf(" %d", (bool) botSeam[i][j]);
+	//  }
+	//  printf(" ]\n");
+	// }
 }
 
 bool loadImg(char *fName) {
@@ -165,7 +195,7 @@ bool loadImg(char *fName) {
 }
 
 bool getPatches() {
-	for (int y1 = 0; y1 < quilt.height(); y1 += ss) {
+	for (int y1 = 0; y1 < quilt.height(); y1 += ss - sw) {
 		for (int x1 = 0; x1 < quilt.width(); x1 += ss - sw) {
 			// for (int x1 = 0; x1 < ss * 2; x1 += ss) {
 			// for (int y1 = 0; y1 < ss; y1 += ss) {
@@ -176,7 +206,7 @@ bool getPatches() {
 				int top = rand() % (source.height() - ss);
 				Patch p = Patch(top, left, top + ss, left + ss);
 				if (x1 != 0 && y1 != 0) {
-					if (patches[x1 - ss + sw][y1].compRight(p) + patches[x1][y1 - ss].compBottom(p) < minDiff) {
+					if (patches[x1 - ss + sw][y1].compRight(p) + patches[x1][y1 - ss + sw].compBottom(p, source) < minDiff) {
 						minDiff = patches[x1 - ss + sw][y1].rightDiff + patches[x1][y1 - ss].botDiff;
 						patches[x1][y1] = p;
 					}
@@ -186,7 +216,7 @@ bool getPatches() {
 						patches[x1][y1] = p;
 					}
 				} else if (y1 != 0) {
-					if (patches[x1][y1 - ss].compBottom(p) < minDiff) {
+					if (patches[x1][y1 - ss + sw].compBottom(p, source) < minDiff) {
 						minDiff = patches[x1][y1 - ss].botDiff;
 						patches[x1][y1] = p;
 					}
@@ -202,7 +232,7 @@ bool getPatches() {
 				Patch p1 = patches[x1 - ss + sw][y1];
 				p1.findRightSeam();
 				int w = fmin(p2.right - p2.left, sw);
-				int h = p2.bottom - p2.top;
+				int h = fmin(p2.bottom - p2.top, y2 - y1);
 
 				for (int i = 0; i < w; ++i) {
 					for (int j = 0; j < h; ++j) {
@@ -236,6 +266,40 @@ bool getPatches() {
 				}
 			}
 
+			//row finished, stitch this row with the one above
+			// if (y1 != 0 && x2 == quilt.width()) {
+			// 	Patch p1 = Patch(y1 - ss + sw, 0, y1, quilt.width());
+			// 	Patch p2 = Patch(y1, 0, y2, quilt.width());
+			// 	p1.compBottom(p2, quilt);
+			// 	p1.findBottomSeam();
+			// 	int w = quilt.width();
+			// 	int h = fmin(p2.bottom - p2.top, sw);
+			// 	for (int i = 0; i < w; ++i) {
+			// 		for (int j = 0; j < h; ++j) {
+			// 			if (p1.botSeam[i][j]) {
+			// 				for (int c = 0; c < spectrum; c++) {
+			// 					quilt(i, y1 - sw + j, c) = quilt(i, p1.bottom - sw + j, c);
+			// 				}
+			// 			} else {
+			// 				for (int c = 0; c < spectrum; c++) {
+			// 					quilt(i, y1 - sw + j, c) = quilt(i, p2.top + j, c);
+			// 				}
+			// 			}
+			// 		}
+			// 	}
+			// 	for (int i = 0; i < quilt.width(); ++i) {
+			// 		for (int j = 0; y1 + h + j < y2; ++j) {
+			// 			for (int c = 0; c < spectrum; c++) {
+			// 				quilt(i, y1 + j, c) = quilt(i, p2.top + h + j, c);
+			// 			}
+			// 		}
+			// 	}
+			// 	// quilt.display();
+			// 	if (y2 == quilt.height()) {
+			// 		quilt.crop(0, 0, 0, 0, quilt.width(), quilt.height() - h, 1, spectrum);
+			// 	}
+			// }
+
 		}
 	}
 	return true;
@@ -258,7 +322,8 @@ int main(int argc, char *argv[]) {
 
 	// Patch p(0, 0, 60, 60);
 	// Patch p2(0, 60, 60, 120);
-	// p.compRight(p2);
+	// p.compBottom(p2);
+	// p.findBottomSeam();
 
 	quilt.display();
 

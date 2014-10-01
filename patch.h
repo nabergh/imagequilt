@@ -21,10 +21,11 @@ public:
 	// Patch& operator=(const Patch&);
 
 	int compRight(Patch& right);
-	int compBottom(Patch& right);
+	int compBottom(Patch& right, cimg_library::CImg<unsigned char> & img);
 
+	vector< vector<bool> > findSeam(vector< vector<int> >&);
 	void findRightSeam();
-	// void findBottomSeam();
+	void findBottomSeam();
 
 };
 
